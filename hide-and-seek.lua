@@ -1,6 +1,6 @@
--- name: Hide and Seek
+-- name:Ryu Hide and Seek
 -- incompatible: gamemode
--- description: A simple hide-and-seek gamemode for\nCo-op.\n\nThe game is split into two teams:\n\nHiders and Seekers. The goal is for all\n\Hiders to be converted into a Seeker within a certain timeframe.\n\nAll Seekers appear as a metal character.\n\nEnjoy! :D\n\nConcept by: Super Keeberghrh
+-- description: Tweaked Hide and Seek\n\nAll Seekers appear as a metal character.\n\nDuring the hiding phase, the seeker \nis slowed heavily and cannot tag.\n\nAfter the round has started,\nseekers are 20% faster.\n\nAll players return to the entrance\nwhen a round starts.\n\n\nOriginal Concept and Code by:\nSuper Keeberghrh\nand djoslin0\n\nModified by VianArdene\n\nFeel free to modify further for your own purposes under a different name.
 
 -- constants
 local ROUND_STATE_WAIT        = 0
@@ -8,23 +8,22 @@ local ROUND_STATE_ACTIVE      = 1
 local ROUND_STATE_SEEKERS_WIN = 2
 local ROUND_STATE_HIDERS_WIN  = 3
 local ROUND_STATE_UNKNOWN_END = 4
+local ROUND_STATE_HIDING = 5
 
 -- globals
 gGlobalSyncTable.roundState   = ROUND_STATE_WAIT -- current round state
-gGlobalSyncTable.touchTag = true
-gGlobalSyncTable.seekerSpeedboost = true
+gGlobalSyncTable.touchTag = false
 gGlobalSyncTable.hiderCaps = false
-gGlobalSyncTable.seekerCaps = true
+gGlobalSyncTable.seekerCaps = false
 gGlobalSyncTable.banKoopaShell = true
 gGlobalSyncTable.disableBLJ = true
 gGlobalSyncTable.displayTimer = 0 -- the displayed timer
 
 -- variables
 local sRoundTimer        = 0            -- the server's round timer
-local sRoundStartTimeout = 15 * 30      -- fifteen seconds
+local sRoundHideTimeout = 30 * 30      -- 30 seconds to hide
 local sRoundEndTimeout   = 3 * 60 * 30  -- three minutes
-local numberOfSeekers = 2
-local seekerSpeedBoostAmt = 1.15
+local sRoundGGs = 5 * 30
 local pauseExitTimer = 0
 local canLeave = false
 local sFlashingIndex = 0
@@ -42,14 +41,14 @@ hook_chat_command, network_player_set_description, hook_on_sync_table_change, ne
 hook_event, djui_popup_create, network_get_player_text_color_string, play_sound,
 play_character_sound, djui_chat_message_create, djui_hud_set_resolution, djui_hud_set_font,
 djui_hud_set_color, djui_hud_render_rect, djui_hud_print_text, djui_hud_get_screen_width, djui_hud_get_screen_height,
-djui_hud_measure_text, tostring, warp_to_level, warp_to_start_level, stop_cap_music, dist_between_objects,
+djui_hud_measure_text, tostring, warp_to_level, warp_to_start_level, warp_to_castle, stop_cap_music, dist_between_objects,
 math_floor, math_ceil, table_insert, set_camera_mode
 =
 hook_chat_command, network_player_set_description, hook_on_sync_table_change, network_is_server,
 hook_event, djui_popup_create, network_get_player_text_color_string, play_sound,
 play_character_sound, djui_chat_message_create, djui_hud_set_resolution, djui_hud_set_font,
 djui_hud_set_color, djui_hud_render_rect, djui_hud_print_text, djui_hud_get_screen_width, djui_hud_get_screen_height,
-djui_hud_measure_text, tostring, warp_to_level, warp_to_start_level, stop_cap_music, dist_between_objects,
+djui_hud_measure_text, tostring, warp_to_level, warp_to_start_level, warp_to_castle, stop_cap_music, dist_between_objects,
 math.floor, math.ceil, table.insert, set_camera_mode
 
 local function on_or_off(value)
@@ -106,37 +105,54 @@ local function server_update()
         end
     end
 
-    -- start round
-    if sRoundTimer >= sRoundStartTimeout then
-        -- reset seekers
+    if (gGlobalSyncTable.roundState == ROUND_STATE_HIDERS_WIN or 
+    gGlobalSyncTable.roundState == ROUND_STATE_SEEKERS_WIN or 
+    gGlobalSyncTable.roundState == ROUND_STATE_UNKNOWN_END) then
+        if sRoundTimer >= sRoundGGs then
+            gGlobalSyncTable.roundState = ROUND_STATE_HIDING
+            sRoundTimer = 0
+                    -- reset seekers
         for i=0,(MAX_PLAYERS-1) do
             gPlayerSyncTable[i].seeking = false
         end
         hasSeeker = false
 
+        end
         -- pick random seeker
         if not hasSeeker then
             local playerList = activePlayers
-            for i=1, numberOfSeekers do                
-                local randNum = math.random(#playerList)                
+            
+            if #activePlayers < 5 then
+                local randNum = math.random(2)                
                 local s = activePlayers[randNum]
                 s.seeking = true
-                table.remove(activePlayers, randNum)
+            else
+                for i=1, numberOfSeekers do                
+                    local randNum = math.random(#playerList)                
+                    local s = activePlayers[randNum]
+                    s.seeking = true
+                    table.remove(activePlayers, randNum)
+                end
             end
         end
+    end
 
-        -- set round state
-        gGlobalSyncTable.roundState = ROUND_STATE_ACTIVE
-        sRoundTimer = 0
-        gGlobalSyncTable.displayTimer = 0
+    -- start round
+    if (gGlobalSyncTable.roundState == ROUND_STATE_HIDING) then
+        if sRoundTimer >= sRoundHideTimeout then
 
+            -- set round state
+            gGlobalSyncTable.roundState = ROUND_STATE_ACTIVE
+            sRoundTimer = 0
+            gGlobalSyncTable.displayTimer = 0
+        end
     end
 end
 
 local function update()
     pauseExitTimer = pauseExitTimer + 1
 
-    if pauseExitTimer >= 900 and not canLeave then
+    if pauseExitTimer >= 1200 and not canLeave then
         canLeave = true
     end
     -- only allow the server to figure out the seeker
@@ -220,23 +236,17 @@ local function mario_update(m)
         end
     end
 
-    -- warp to the beninging
-    if m.playerIndex == 0 then
-        if gPlayerSyncTable[m.playerIndex].seeking and gGlobalSyncTable.displayTimer == 0 and gGlobalSyncTable.roundState == ROUND_STATE_ACTIVE then
-            warp_to_start_level()
-        end
-    end
+    -- -- warp to the beninging
+    -- if m.playerIndex == 0 then
+    --     -- gPlayerSyncTable[m.playerIndex].seeking and
+    --     if gGlobalSyncTable.displayTimer == 0 and gGlobalSyncTable.roundState == ROUND_STATE_ACTIVE then
+    --         warp_to_start_level()
+    --     end
+    -- end
 
     -- display all seekers as metal
     if s.seeking then
         m.marioBodyState.modelState = m.marioBodyState.modelState | MODEL_STATE_METAL
-
-        if gGlobalSyncTable.seekerSpeedboost then
-            if m.action ~= ACT_BUBBLED and m.action ~= ACT_WATER_JUMP and m.action ~= ACT_HOLD_WATER_JUMP then
-                m.vel.x = m.vel.x * seekerSpeedBoostAmt
-                m.vel.z = m.vel.z * seekerSpeedBoostAmt
-            end
-        end
     end
 
     -- pu prevention
@@ -275,21 +285,23 @@ end
 local function before_phys_step(m)
     -- prevent physics from being altered when bubbled
     local s = gPlayerSyncTable[m.playerIndex]
-
-    if m.action == ACT_BUBBLED or s.seeking then return end
-
-    -- only make seekers faster
-
     local hScale = 1.0
-    local vScale = 1.0
 
-    -- make swimming seekers 5% faster
-    if (m.action & ACT_FLAG_SWIMMING) ~= 0 then
-        hScale = hScale * 1.05
-        if m.action ~= ACT_WATER_PLUNGE then
-            vScale = vScale * 1.05
-        end
+--gGlobalSyncTable.roundState == ROUND_STATE_WAIT and
+
+    if gGlobalSyncTable.roundState == ROUND_STATE_HIDING and s.seeking == true  then
+        hScale = hScale * .10
     end
+
+    if gGlobalSyncTable.roundState == ROUND_STATE_ACTIVE and s.seeking == true  then
+        if m.action ~= ACT_BUBBLED and m.action ~= ACT_WATER_JUMP and m.action ~= ACT_HOLD_WATER_JUMP then
+            hScale = hScale * 1.25
+        end        
+    end
+
+    m.vel.x = m.vel.x * hScale
+    m.vel.z = m.vel.z * hScale
+
 end
 
 local function on_pvp_attack(attacker, victim)
@@ -303,7 +315,7 @@ local function on_pvp_attack(attacker, victim)
     end
 
     -- make victim a seeker
-    if sAttacker.seeking and not sVictim.seeking then
+    if gGlobalSyncTable.roundState == ROUND_STATE_ACTIVE and sAttacker.seeking and not sVictim.seeking then    
         sVictim.seeking = true
     end
 end
@@ -322,15 +334,19 @@ local function hud_top_render()
 
     if gGlobalSyncTable.roundState == ROUND_STATE_WAIT then
         seconds = 60
-        text = "waiting for players"
+        text = "Waiting for Players"
     elseif gGlobalSyncTable.roundState == ROUND_STATE_ACTIVE then
         seconds = math_floor(sRoundEndTimeout / 30 - gGlobalSyncTable.displayTimer)
         if seconds < 0 then seconds = 0 end
-        text = "seekers have " .. seconds .. " seconds"
-    else
-        seconds = math_floor(sRoundStartTimeout / 30 - gGlobalSyncTable.displayTimer)
+        text = "Seekers have " .. seconds .. " seconds left!"
+    elseif gGlobalSyncTable.roundState == ROUND_STATE_HIDERS_WIN then
+        text = "Congrats Hiders!"
+    elseif gGlobalSyncTable.roundState == ROUND_STATE_SEEKERS_WIN then
+        text = "Congrats Seekers!"
+    elseif gGlobalSyncTable.roundState == ROUND_STATE_HIDING then
+        seconds = math_floor(sRoundHideTimeout / 30 - gGlobalSyncTable.displayTimer)
         if seconds < 0 then seconds = 0 end
-        text = "next round in " .. seconds .. " seconds"
+        text = "Seeker is released in " .. seconds .. " seconds"
     end
 
     local scale = 0.5
@@ -366,8 +382,10 @@ local function hud_center_render()
         text = "Seekers Win!"
     elseif gGlobalSyncTable.roundState == ROUND_STATE_HIDERS_WIN then
         text = "Hiders Win!"
+    elseif gGlobalSyncTable.roundState == ROUND_STATE_HIDING then
+        text = "Hide!"
     elseif gGlobalSyncTable.roundState == ROUND_STATE_ACTIVE then
-        text = "Go!"
+        text = "The seeker is hunting!"
     else
         return
     end
@@ -406,12 +424,6 @@ end
 local function on_touch_tag_command()
     gGlobalSyncTable.touchTag = not gGlobalSyncTable.touchTag
     djui_chat_message_create("Touch tag: " .. on_or_off(gGlobalSyncTable.touchTag))
-    return true
-end
-
-local function on_seeker_speedboost_command()
-    gGlobalSyncTable.seekerSpeedboost = not gGlobalSyncTable.seekerSpeedboost
-    djui_chat_message_create("Touch tag: " .. on_or_off(gGlobalSyncTable.seekerSpeedboost))
     return true
 end
 
@@ -469,8 +481,15 @@ local function on_round_state_changed()
         play_character_sound(gMarioStates[0], CHAR_SOUND_HERE_WE_GO)
     elseif rs == ROUND_STATE_SEEKERS_WIN then
         play_sound(SOUND_MENU_CLICK_CHANGE_VIEW, gMarioStates[0].marioObj.header.gfx.cameraToObject)
+        
     elseif rs == ROUND_STATE_HIDERS_WIN then
         play_sound(SOUND_MENU_CLICK_CHANGE_VIEW, gMarioStates[0].marioObj.header.gfx.cameraToObject)
+
+    elseif rs == ROUND_STATE_HIDING then
+        
+        local s = gPlayerSyncTable[0]
+
+        warp_to_start_level()
     end
 end
 
@@ -483,18 +502,74 @@ local function on_seeking_changed(tag, oldVal, newVal)
         play_sound(SOUND_OBJ_BOWSER_LAUGH, m.marioObj.header.gfx.cameraToObject)
         playerColor = network_get_player_text_color_string(m.playerIndex)
 
-        local pick = math.random(5)                
+        local pick = math.random(31)                
         if pick == 1 then
             djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is now a seeker!", 2)
         elseif pick == 2 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ got caught, dumbass!", 2)
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ joined the dark side.", 2)
         elseif pick == 3 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ met Mr. Bones!", 2)
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ got that dog in 'em!", 2)
         elseif pick == 4 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ should've teched.", 2)
-        elseif pick == 5 then
             djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is coming for that ass!", 2)
-        end
+        elseif pick == 5 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\: 'Aw shit, here we go again.'", 2)
+        elseif pick == 6 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ dropped their spaghetti.", 2)
+        elseif pick == 7 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ hears every door you open.", 2)
+        elseif pick == 8 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ will kill your wife, your son, & your infant daughter.", 2)
+        elseif pick == 9 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ forgot to turn the oven off.", 2)
+        elseif pick == 10 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is rapidly approaching your location!", 2)
+        elseif pick == 11 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ HIT THE PENTAGON!", 2)
+        elseif pick == 12 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is hidern't.", 2)
+        elseif pick == 13 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ regrets losing their glasses.", 2)
+        elseif pick == 14 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is going to grape you!", 2)
+        elseif pick == 15 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ recognizes the bodies in the water!", 2)
+        elseif pick == 16 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is looking for that DAMNED 4th Chaos Emerald!", 2)
+        elseif pick == 17 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ has been thinking about it and they're definitely back!", 2)
+        elseif pick == 18 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ got L + ratio'd", 2)
+        elseif pick == 19 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ definitely didn't tech that!", 2)
+        elseif pick == 20 then
+            djui_popup_create("\\#ffa0a0\\You fucked around and " .. playerColor .. npT.name .. "\\#ffa0a0\\ found out!", 2)
+        elseif pick == 21 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ knows the age of consent in your tri-state area!", 2)
+        elseif pick == 22 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ knows why the McDonalds ice cream machine is broken.", 2)
+        elseif pick == 23 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ jelqed too close to the sun!", 2)
+        elseif pick == 24 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ unironcally uses the term 'jelqing'!", 2) 
+        elseif pick == 25 then
+            djui_popup_create("\\#ffa0a0\\You owe " .. playerColor .. npT.name .. "\\#ffa0a0\\ $5! Time to pay up!", 2)
+        elseif pick == 26 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is shidding and fardding!", 2)
+        elseif pick == 27 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ was pressing buttons!", 2)
+        elseif pick == 28 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ wants to kiss boys!", 2)
+        elseif pick == 29 then
+            djui_popup_create("\\#ffa0a0\\We hope you don't mind if " .. playerColor .. npT.name .. "\\#ffa0a0\\ goes full Beast Mode!", 2)
+        elseif pick == 30 then
+            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is going to take you down to Memphis!", 2)
+        elseif pick == 31 then
+            if (math.random(100) == 1) then
+                djui_popup_create(playerColor .. npT.name .. "\\#a3ffb4\\ found a super rare message! No one will believe you.", 2)
+            else
+                djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ looks huge!", 2)
+            end            
+        end     
         sRoundTimer = 32
     end
 
@@ -517,6 +592,10 @@ local function on_interact(m, obj, intee)
     if intee == INTERACT_PLAYER then
 
         if not gGlobalSyncTable.touchTag then
+            return
+        end
+
+        if gGlobalSyncTable.roundState == ROUND_STATE_HIDING then
             return
         end
 
@@ -550,7 +629,6 @@ function allow_pvp_attack(m1, m2)
 end
 
 gLevelValues.disableActs = true
-gLevelValues.zoomOutCameraOnPause = false
 
 -----------
 -- hooks --
@@ -573,7 +651,6 @@ hook_event(HOOK_USE_ACT_SELECT, function () return false end)
 
 if network_is_server() then
    hook_chat_command("touch-to-tag", "Turn touch tag on or off", on_touch_tag_command)
-   hook_chat_command("seeker-speedboost", "Give seekers a speedboost", on_seeker_speedboost_command)
    hook_chat_command("hiders-caps", "Turn caps for hiders on or off", on_hider_cap_command)
    hook_chat_command("seekers-caps", "Turn caps for seekers on or off", on_seeker_cap_command)
    hook_chat_command("koopa-shell", "Turn the koopa shell on or off", on_koopa_shell_command)

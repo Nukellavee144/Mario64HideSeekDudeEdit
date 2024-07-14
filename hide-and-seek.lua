@@ -24,6 +24,7 @@ local sRoundTimer        = 0            -- the server's round timer
 local sRoundHideTimeout = 30 * 30      -- 30 seconds to hide
 local sRoundEndTimeout   = 3 * 60 * 30  -- three minutes
 local sRoundGGs = 5 * 30
+local numberOfSeekers = 2
 local pauseExitTimer = 0
 local canLeave = false
 local sFlashingIndex = 0
@@ -42,14 +43,14 @@ hook_event, djui_popup_create, network_get_player_text_color_string, play_sound,
 play_character_sound, djui_chat_message_create, djui_hud_set_resolution, djui_hud_set_font,
 djui_hud_set_color, djui_hud_render_rect, djui_hud_print_text, djui_hud_get_screen_width, djui_hud_get_screen_height,
 djui_hud_measure_text, tostring, warp_to_level, warp_to_start_level, warp_to_castle, stop_cap_music, dist_between_objects,
-math_floor, math_ceil, table_insert, set_camera_mode
+math_floor, math_ceil, table_insert, table_remove, set_camera_mode
 =
 hook_chat_command, network_player_set_description, hook_on_sync_table_change, network_is_server,
 hook_event, djui_popup_create, network_get_player_text_color_string, play_sound,
 play_character_sound, djui_chat_message_create, djui_hud_set_resolution, djui_hud_set_font,
 djui_hud_set_color, djui_hud_render_rect, djui_hud_print_text, djui_hud_get_screen_width, djui_hud_get_screen_height,
 djui_hud_measure_text, tostring, warp_to_level, warp_to_start_level, warp_to_castle, stop_cap_music, dist_between_objects,
-math.floor, math.ceil, table.insert, set_camera_mode
+math.floor, math.ceil, table.insert, table.remove, set_camera_mode
 
 local function on_or_off(value)
     if value then return "enabled" end
@@ -131,7 +132,7 @@ local function server_update()
                     local randNum = math.random(#playerList)                
                     local s = activePlayers[randNum]
                     s.seeking = true
-                    table.remove(activePlayers, randNum)
+                    table_remove(activePlayers, randNum)
                 end
             end
         end
@@ -290,13 +291,19 @@ local function before_phys_step(m)
 --gGlobalSyncTable.roundState == ROUND_STATE_WAIT and
 
     if gGlobalSyncTable.roundState == ROUND_STATE_HIDING and s.seeking == true  then
-        hScale = hScale * .10
+        hScale = hScale * .10        
+    end
+
+    if gGlobalSyncTable.roundState == ROUND_STATE_HIDING and s.seeking == false  then
+        if m.action ~= ACT_BUBBLED and m.action ~= ACT_WATER_JUMP and m.action ~= ACT_HOLD_WATER_JUMP then
+            hScale = hScale * 1.5
+        end     
     end
 
     if gGlobalSyncTable.roundState == ROUND_STATE_ACTIVE and s.seeking == true  then
         if m.action ~= ACT_BUBBLED and m.action ~= ACT_WATER_JUMP and m.action ~= ACT_HOLD_WATER_JUMP then
             hScale = hScale * 1.25
-        end        
+        end
     end
 
     m.vel.x = m.vel.x * hScale
@@ -400,7 +407,7 @@ local function hud_center_render()
     local height = 32 * scale
 
     local x = (screenWidth - width) * 0.5
-    local y = (screenHeight - height) * 0.5
+    local y = (screenHeight - height) * 0.25
 
     -- render
     djui_hud_set_color(0, 0, 0, 128)
@@ -450,7 +457,6 @@ local function on_blj_command()
     djui_chat_message_create("BLJS: " .. on_or_off(not gGlobalSyncTable.disableBLJ))
     return true
 end
-
 
 local function level_init()
     local s = gPlayerSyncTable[0]
@@ -502,74 +508,43 @@ local function on_seeking_changed(tag, oldVal, newVal)
         play_sound(SOUND_OBJ_BOWSER_LAUGH, m.marioObj.header.gfx.cameraToObject)
         playerColor = network_get_player_text_color_string(m.playerIndex)
 
-        local pick = math.random(31)                
-        if pick == 1 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is now a seeker!", 2)
-        elseif pick == 2 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ joined the dark side.", 2)
-        elseif pick == 3 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ got that dog in 'em!", 2)
-        elseif pick == 4 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is coming for that ass!", 2)
-        elseif pick == 5 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\: 'Aw shit, here we go again.'", 2)
-        elseif pick == 6 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ dropped their spaghetti.", 2)
-        elseif pick == 7 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ hears every door you open.", 2)
-        elseif pick == 8 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ will kill your wife, your son, & your infant daughter.", 2)
-        elseif pick == 9 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ forgot to turn the oven off.", 2)
-        elseif pick == 10 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is rapidly approaching your location!", 2)
-        elseif pick == 11 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ HIT THE PENTAGON!", 2)
-        elseif pick == 12 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is hidern't.", 2)
-        elseif pick == 13 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ regrets losing their glasses.", 2)
-        elseif pick == 14 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is going to grape you!", 2)
-        elseif pick == 15 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ recognizes the bodies in the water!", 2)
-        elseif pick == 16 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is looking for that DAMNED 4th Chaos Emerald!", 2)
-        elseif pick == 17 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ has been thinking about it and they're definitely back!", 2)
-        elseif pick == 18 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ got L + ratio'd", 2)
-        elseif pick == 19 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ definitely didn't tech that!", 2)
-        elseif pick == 20 then
-            djui_popup_create("\\#ffa0a0\\You fucked around and " .. playerColor .. npT.name .. "\\#ffa0a0\\ found out!", 2)
-        elseif pick == 21 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ knows the age of consent in your tri-state area!", 2)
-        elseif pick == 22 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ knows why the McDonalds ice cream machine is broken.", 2)
-        elseif pick == 23 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ jelqed too close to the sun!", 2)
-        elseif pick == 24 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ unironcally uses the term 'jelqing'!", 2) 
-        elseif pick == 25 then
-            djui_popup_create("\\#ffa0a0\\You owe " .. playerColor .. npT.name .. "\\#ffa0a0\\ $5! Time to pay up!", 2)
-        elseif pick == 26 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is shidding and fardding!", 2)
-        elseif pick == 27 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ was pressing buttons!", 2)
-        elseif pick == 28 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ wants to kiss boys!", 2)
-        elseif pick == 29 then
-            djui_popup_create("\\#ffa0a0\\We hope you don't mind if " .. playerColor .. npT.name .. "\\#ffa0a0\\ goes full Beast Mode!", 2)
-        elseif pick == 30 then
-            djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ is going to take you down to Memphis!", 2)
-        elseif pick == 31 then
-            if (math.random(100) == 1) then
-                djui_popup_create(playerColor .. npT.name .. "\\#a3ffb4\\ found a super rare message! No one will believe you.", 2)
-            else
-                djui_popup_create(playerColor .. npT.name .. "\\#ffa0a0\\ looks huge!", 2)
-            end            
-        end     
+        local messages = {
+            playerColor .. npT.name .. "\\#ffa0a0\\ is now a seeker!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ joined the dark side.",
+            playerColor .. npT.name .. "\\#ffa0a0\\ got that dog in 'em!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ is coming for that ass!",
+            playerColor .. npT.name .. "\\#ffa0a0\\: 'Aw shit, here we go again.'",
+            playerColor .. npT.name .. "\\#ffa0a0\\ dropped their spaghetti.",
+            playerColor .. npT.name .. "\\#ffa0a0\\ hears every door you open.",
+            playerColor .. npT.name .. "\\#ffa0a0\\ will kill your wife, your son, & your infant daughter.",
+            playerColor .. npT.name .. "\\#ffa0a0\\ forgot to turn the oven off.",
+            playerColor .. npT.name .. "\\#ffa0a0\\ is rapidly approaching your location!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ HIT THE PENTAGON!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ is hidern't.",
+            playerColor .. npT.name .. "\\#ffa0a0\\ regrets losing their glasses.",
+            playerColor .. npT.name .. "\\#ffa0a0\\ is going to grape you!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ recognizes the bodies in the water!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ is looking for that DAMNED 4th Chaos Emerald!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ has been thinking about it and they're definitely back!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ got L + ratio'd",
+            playerColor .. npT.name .. "\\#ffa0a0\\ definitely didn't tech that!",
+            "\\#ffa0a0\\You fucked around and " .. playerColor .. npT.name .. "\\#ffa0a0\\ found out!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ knows the age of consent in your tri-state area!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ knows why the McDonalds ice cream machine is broken.",
+            playerColor .. npT.name .. "\\#ffa0a0\\ jelqed too close to the sun!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ unironcally uses the term 'jelqing'!",
+            "\\#ffa0a0\\You owe " .. playerColor .. npT.name .. "\\#ffa0a0\\ $5! Time to pay up!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ is shidding and fardding!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ was pressing buttons!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ wants to kiss boys!",
+            "\\#ffa0a0\\We hope you don't mind if " .. playerColor .. npT.name .. "\\#ffa0a0\\ goes full Beast Mode!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ is going to take you down to Memphis!",
+            playerColor .. npT.name .. "\\#ffa0a0\\ looks huge!"
+        }
+
+        local pick = math.random(#messages)      
+        djui_popup_create(messages[pick], 2)
+
         sRoundTimer = 32
     end
 
